@@ -10,14 +10,11 @@
 //     ]
 // }
 
-var contextkk =
-  window.ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer
-    .captionTracks;
-
 var languageCode = "en";
-var subUrl = contextkk.find((k) => k.languageCode === languageCode);
+let subUrl;
 var subtitleData;
 var subtitleDataTime;
+var lineTimes = [];
 var video;
 var divWrap;
 
@@ -59,7 +56,95 @@ function millisToMinutesAndSeconds(millis) {
 
 var getClosest = (data, value) => {
   const closest = data.reduce(function (prev, curr) {
-    return Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev;
+    return Math.abs(curr.value - value) < Math.abs(prev.value - value) ? curr : prev;
+  });
+  return closest;
+};
+
+let lastCurrent = null;
+let lastCurrentTime = null;
+function getElement(time) {
+  if (lastCurrent) {
+    const lastTime = lastCurrent.id.split('_item_')[1];
+    if (parseFloat(lastTime < time)) {
+      const parent = lastCurrent.parentElement;
+      const children = [...parent.children];
+      const index = children.indexOf(lastCurrent);
+      while (index < children.length - 1) {
+        const t = children[index + 1].id.split('_item_')[1];
+        if (parseFloat(t) >= time) {
+          return children[index + 1];
+        }
+      }
+    }
+  }
+  return null;
+
+}
+
+// We need to find a closest time that is later(larger) than value.
+var getClosestNew = (value) => {
+  if (value == 0) {
+    return lineTimes[0];
+  }
+  if (lastCurrentTime) {
+    //Back
+    if (lastCurrentTime.value > value) {
+      if (lastCurrentTime.index == 0) {
+        return lastCurrentTime;
+      }
+      if (lastCurrentTime.index > 0 && lineTimes[lastCurrentTime.index - 1].value < value) {
+        return lastCurrentTime;
+      }
+      if (lastCurrentTime.value - 10 < value) {
+        let index = lastCurrentTime.index - 1;
+        while (index >= 0 && lineTimes[index].value > value) {
+          index--;
+        }
+        if (index >= 0) {
+          return lineTimes[index];
+        }
+      }
+    } else
+      if (lastCurrentTime.value == value) {
+        return lastCurrentTime;
+      } else {
+        //Forward
+        if (lastCurrentTime.index == lineTimes.length - 1) {
+          return lastCurrentTime;
+        }
+        if (lastCurrentTime.value + 10 > value) {
+          let index = lastCurrentTime.index + 1;
+          while (index < lineTimes.length && lineTimes[index].value < value) {
+            index++;
+          }
+          if (index < lineTimes.length) {
+            return lineTimes[index];
+          }
+        }
+      }
+  }
+  const closest = lineTimes.reduce(function (prev, curr) {
+    if (curr.value == value) {
+      return curr;
+    }
+    if (prev.value == value) {
+      return prev;
+    }
+    if (curr.value > value) {
+      if (prev.value < value) {
+        return curr;
+      } else {
+        return Math.abs(curr.value - value) < Math.abs(prev.value - value) ? curr : prev;
+      }
+    }
+    if (curr.value < value) {
+      if (prev.value > value) {
+        return prev;
+      } else {
+        return Math.abs(curr.value - value) < Math.abs(prev.value - value) ? curr : prev;
+      }
+    }
   });
   return closest;
 };
@@ -68,6 +153,41 @@ var turnOffAutoSub = () => {
   clearInterval(window.loopAutoScroll);
 };
 
+function sendMessageToBackend(message) {
+  message.sender = 'youtube_subtitle_extractor';
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(message, (response) => {
+      resolve(response);
+    });
+  })
+}
+
+function findPositionOfNthOccurrence(mainString, subString, n) {
+  let count = 0;
+  let startIndex = 0;
+  let position;
+
+  // Loop to find the n-th occurrence of the subString
+  while (count < n) {
+    position = mainString.indexOf(subString, startIndex);
+    if (position === -1) {
+      // If the subString is not found, break out of the loop
+      break;
+    }
+    startIndex = position + subString.length; // Move the start index past the current match
+    count++; // Increment the count of occurrences found
+  }
+
+  // If the loop exited without finding n occurrences, return -1
+  if (count < n) {
+    return -1;
+  }
+
+  // Return the position of the n-th occurrence
+  return position;
+}
+
+let lastScrollTo;
 var turnOnAutoSub = () => {
   if (window.loopAutoScroll) {
     turnOffAutoSub();
@@ -75,144 +195,156 @@ var turnOnAutoSub = () => {
 
   window.loopAutoScroll = setInterval(() => {
     const currentTime = video.currentTime;
-    const scrollTo = getClosest(subtitleDataTime, currentTime);
-    // console.log("getClosest::", scrollTo);
-    const liElement = document.getElementById(`seek-youtube_item_${scrollTo}`);
-    const liElementAll = document.getElementsByClassName(`seek-youtube_item`);
-    for (let i = 0; i < liElementAll.length; i++) {
-      const el = liElementAll[i];
-      el.style.color = "black";
+    const scrollTo = getClosest(lineTimes, currentTime);
+    if (scrollTo == lastScrollTo) {
+      return;
     }
+    let substringToFind = '||||';//`-${scrollTo.value.toFixed(2)}-`;
+    // Select all span elements within the div
+    const spanElements = divWrap.querySelectorAll('span');
 
-    liElement.style.color = "red";
+    // Loop through each span element
+    spanElements.forEach(span => {
+      // Get the text content of the span
+      const spanText = span.textContent;
 
-    const ofs = liElement.offsetTop;
-    if (ofs > 300) {
-      divWrap.scrollTop = ofs - 300;
+      // Replace the span with its text content
+      span.parentNode.insertBefore(document.createTextNode(spanText), span);
+
+      // Remove the original span element
+      span.remove();
+    });
+    // const position = divWrap.innerHTML.indexOf(substringToFind)
+    position = findPositionOfNthOccurrence(divWrap.innerHTML, substringToFind, scrollTo.index);
+    if (position !== -1) {
+      var highlightedDiv = document.createElement('span');
+      highlightedDiv.innerHTML = substringToFind;
+      highlightedDiv.style.color = 'red'; // Highlight the substring
+      highlightedDiv.setAttribute('index', scrollTo.index);
+
+      // Replace the original substring in the div with the highlighted version
+      divWrap.innerHTML = divWrap.innerHTML.slice(0, position) + highlightedDiv.outerHTML + divWrap.innerHTML.slice(position + substringToFind.length);
+      const span = divWrap.querySelector('span')
+      span.scrollIntoViewIfNeeded();
     }
   }, 150);
 };
 
-var makeList = (data) => {
-  console.log("makeList", data.length);
-  video = document.getElementsByTagName("video")[0];
-  // console.log("video", video);
-  divWrap = document.getElementById("seek-youtube_wrap");
-  // console.log("divWrap1", divWrap);
-  if (!divWrap) {
-    divWrap = document.createElement("div");
-  }
-  // console.log("divWrap2", divWrap);
+if (window.ytInitialPlayerResponse) {
+  var contextkk =
+    window.ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer
+      .captionTracks;
+  subUrl = contextkk.find((k) => k.languageCode === languageCode);
 
-  const ul = document.createElement("ul");
+  var makeList = (data) => {
+    console.log("makeList", data.length);
+    video = document.getElementsByTagName("video")[0];
+    // console.log("video", video);
+    let allTextArea = document.getElementById("seek-youtube-all-text");
+    let allText = '';
+    let subtitlesText = '';
+    // let copyButton;
+    if (!allTextArea) {
+      allTextArea = document.createElement("div");
+      allTextArea.id = "seek-youtube-all-text";
+      allTextArea.style.height = "20px";
+      allTextArea.style.overflow = "hidden";
+      allTextArea.style.overflowY = "auto";
+    }
+    divWrap = document.getElementById("seek-youtube_wrap");
+    // console.log("divWrap1", divWrap);
+    if (!divWrap) {
+      divWrap = document.createElement("div");
+    }
+    // console.log("divWrap2", divWrap);
 
-  data.forEach((el) => {
-    const { segs = [], tStartMs } = el;
-    const li = document.createElement("li");
+    // const ul = document.createElement("ul");
 
-    const span = document.createElement("span");
-    span.append(`${millisToMinutesAndSeconds(tStartMs)}:`);
-    span.style.color = 'blue';
-    span.addEventListener("click", function (ev) {
-      video.currentTime = tStartMs / 1000;
+    data.forEach((el) => {
+      const { segs = [], tStartMs } = el;
+      const t = (tStartMs / 1000) //millisToMinutesAndSeconds(tStartMs);
+      const timeString = `-${t.toFixed(2)}-`;
+
+      allText += '||||'; //timeString;
+      // subtitlesText += '||||';
+
+      segs.map((k) => {
+        allText += k.utf8.toString();
+        subtitlesText += k.utf8.toString();
+        // return k.utf8
+      })
+      lineTimes.push({ index: lineTimes.length, value: t });// tStartMs / 1000 });
     });
 
-    const p = document.createElement("span");
-    p.style.marginLeft = "12px";
-    p.append(
-      ` ${segs
-        .map((k) => k.utf8)
-        .toString()
-        .replaceAll(", ", " ")}`
-    );
+    divWrap.innerHTML = allText;
 
-    li.append(span);
-    li.append(p);
+    divWrap.id = "seek-youtube_wrap";
+    divWrap.style.height = video.style.height;
+    divWrap.style.zIndex = 999;
+    divWrap.style.background = "white";
+    divWrap.style.top = "80px";
+    divWrap.style.right = "0";
+    divWrap.style.fontSize = "14px";
+    divWrap.style.padding = "24px 24px";
+    divWrap.style.marginRight = "24px";
+    divWrap.style.overflow = "auto";
+    divWrap.style.border = "1px solid";
+    divWrap.style.transition = "transform 1s";
 
-    li.id = `seek-youtube_item_${tStartMs / 1000}`;
-    li.className = `seek-youtube_item`;
-    li.style.cursor = "pointer";
-    li.style.paddingBottom = "12px";
+    let divSecondary = document.getElementById("secondary");
+    divSecondary.prepend(divWrap);
+    // allTextArea.textContent = subtitlesText;
+    // divSecondary.prepend(allTextArea);
 
-    let origColorStyle = li.style.color;
-    li.addEventListener("mouseenter", (event) => {
-      event.target.style.background = "rgb(233, 229, 229)";
+    // start auto jum sub
+    // turnOnAutoSub();
+
+    divWrap.addEventListener("mouseover", function (ev) {
+      turnOnAutoSub();
     });
-    li.addEventListener("mouseleave", (event) => {
-      event.target.style.background = origColorStyle;
+
+    divWrap.addEventListener("mouseleave", function (ev) {
+      turnOffAutoSub()
     });
 
-    ul.append(li);
-  });
+    video.addEventListener("ended", function (e) {
+      turnOffAutoSub();
+    });
+  };
 
-  divWrap.innerHTML = ""; // clear all child
-  divWrap.append(ul);
-  // console.log("divWrap 3", divWrap);
+  (async () => {
+    try {
+      const resData = await fetch(subUrl?.baseUrl + "&fmt=json3").then((res) =>
+        res.json()
+      );
+      // console.log("resData", resData);
+      subtitleData = resData?.events.filter(
+        (k) =>
+          k?.segs &&
+          Boolean(
+            ` ${k?.segs
+              .map((k) => k.utf8)
+              .toString()
+              .replaceAll(", ", " ")}`.trim()
+          )
+      );
+      subtitleDataTime = resData?.events.map((k) => k.tStartMs / 1000);
+    } catch (error) {
+      console.log(error);
+    }
 
-  divWrap.id = "seek-youtube_wrap";
-  divWrap.style.height = video.style.height;
-  divWrap.style.zIndex = 999;
-  divWrap.style.background = "white";
-  divWrap.style.top = "80px";
-  divWrap.style.right = "0";
-  divWrap.style.fontSize = "14px";
-  divWrap.style.padding = "24px 24px";
-  divWrap.style.marginRight = "24px";
-  divWrap.style.overflow = "auto";
-  divWrap.style.border = "1px solid";
-  divWrap.style.transition = "transform 1s";
+    if (subtitleData) {
+      console.log("runnnn");
 
-  let divSecondary = document.getElementById("secondary");
-  divSecondary.prepend(divWrap);
-
-  // start auto jum sub
-  turnOnAutoSub();
-
-  divWrap.addEventListener("mouseover", function (ev) {
-    turnOffAutoSub();
-  });
-
-  divWrap.addEventListener("mouseleave", function (ev) {
-    turnOnAutoSub();
-  });
-
-  video.addEventListener("ended", function (e) {
-    turnOffAutoSub();
-  });
-};
-
-(async () => {
-  try {
-    const resData = await fetch(subUrl?.baseUrl + "&fmt=json3").then((res) =>
-      res.json()
-    );
-    // console.log("resData", resData);
-    subtitleData = resData?.events.filter(
-      (k) =>
-        k?.segs &&
-        Boolean(
-          ` ${k?.segs
-            .map((k) => k.utf8)
-            .toString()
-            .replaceAll(", ", " ")}`.trim()
-        )
-    );
-    subtitleDataTime = resData?.events.map((k) => k.tStartMs / 1000);
-  } catch (error) {
-    console.log(error);
-  }
-
-  if (subtitleData) {
-    console.log("runnnn");
-
-    await retry(
-      () => {},
-      2000,
-      50,
-      () => {
-        return document.getElementById("secondary");
-      }
-    );
-    makeList(subtitleData);
-  }
-})();
+      await retry(
+        () => { },
+        2000,
+        50,
+        () => {
+          return document.getElementById("secondary");
+        }
+      );
+      makeList(subtitleData);
+    }
+  })();
+}
