@@ -194,157 +194,183 @@ var turnOnAutoSub = () => {
   }
 
   window.loopAutoScroll = setInterval(() => {
-    const currentTime = video.currentTime;
+    const currentTime = video.currentTime * 1000;
     const scrollTo = getClosest(lineTimes, currentTime);
     if (scrollTo == lastScrollTo) {
       return;
     }
-    let substringToFind = '||||';//`-${scrollTo.value.toFixed(2)}-`;
+    // let substringToFind = '||||';//`-${scrollTo.value.toFixed(2)}-`;
+
+    divWrap.setAttribute('index', scrollTo.index);
+    divWrap.setAttribute('time', currentTime);
+    // let substringToFind = '||||';//`-${scrollTo.value.toFixed(2)}-`;
     // Select all span elements within the div
-    const spanElements = divWrap.querySelectorAll('span');
+    // const spanElements = divWrap.querySelectorAll('span');
 
     // Loop through each span element
-    spanElements.forEach(span => {
-      // Get the text content of the span
-      const spanText = span.textContent;
+    // spanElements.forEach(span => {
+    //   // Get the text content of the span
+    //   const spanText = span.textContent;
 
-      // Replace the span with its text content
-      span.parentNode.insertBefore(document.createTextNode(spanText), span);
+    //   // Replace the span with its text content
+    //   span.parentNode.insertBefore(document.createTextNode(spanText), span);
 
-      // Remove the original span element
-      span.remove();
-    });
+    //   // Remove the original span element
+    //   span.remove();
+    // });
     // const position = divWrap.innerHTML.indexOf(substringToFind)
-    position = findPositionOfNthOccurrence(divWrap.innerHTML, substringToFind, scrollTo.index);
-    if (position !== -1) {
-      var highlightedDiv = document.createElement('span');
-      highlightedDiv.innerHTML = substringToFind;
-      highlightedDiv.style.color = 'red'; // Highlight the substring
-      highlightedDiv.setAttribute('index', scrollTo.index);
+    // position = findPositionOfNthOccurrence(divWrap.innerHTML, substringToFind, scrollTo.index);
+    // if (position !== -1) {
+    //   var highlightedDiv = document.createElement('span');
+    //   highlightedDiv.innerHTML = substringToFind;
+    //   highlightedDiv.style.color = 'red'; // Highlight the substring
+    //   highlightedDiv.setAttribute('index', scrollTo.index);
 
-      // Replace the original substring in the div with the highlighted version
-      divWrap.innerHTML = divWrap.innerHTML.slice(0, position) + highlightedDiv.outerHTML + divWrap.innerHTML.slice(position + substringToFind.length);
-      const span = divWrap.querySelector('span')
-      span.scrollIntoViewIfNeeded();
-    }
+    //   // Replace the original substring in the div with the highlighted version
+    //   divWrap.innerHTML = divWrap.innerHTML.slice(0, position) + highlightedDiv.outerHTML + divWrap.innerHTML.slice(position + substringToFind.length);
+    //   const span = divWrap.querySelector('span')
+    //   span.scrollIntoViewIfNeeded();
+    // }
   }, 150);
 };
 
 if (window.ytInitialPlayerResponse) {
   var contextkk =
-    window.ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer
-      .captionTracks;
-  subUrl = contextkk.find((k) => k.languageCode === languageCode);
-
-  var makeList = (data) => {
-    console.log("makeList", data.length);
-    video = document.getElementsByTagName("video")[0];
-    // console.log("video", video);
-    let allTextArea = document.getElementById("seek-youtube-all-text");
-    let allText = '';
-    let subtitlesText = '';
-    // let copyButton;
-    if (!allTextArea) {
-      allTextArea = document.createElement("div");
-      allTextArea.id = "seek-youtube-all-text";
-      allTextArea.style.height = "20px";
-      allTextArea.style.overflow = "hidden";
-      allTextArea.style.overflowY = "auto";
+    window.ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer.captionTracks;
+  if (contextkk && contextkk.length > 0) {
+    subUrl = contextkk[0];
+    url = contextkk.find(
+      (k) =>
+        k.languageCode === languageCode
+    );
+    if (url) {
+      subUrl = url;
     }
-    divWrap = document.getElementById("seek-youtube_wrap");
-    // console.log("divWrap1", divWrap);
-    if (!divWrap) {
-      divWrap = document.createElement("div");
-    }
-    // console.log("divWrap2", divWrap);
+    let wordsCount = 0;
+    var makeList = (data) => {
+      console.log("makeList", data.length);
+      video = document.getElementsByTagName("video")[0];
+      // console.log("video", video);
+      let allTextArea = document.getElementById("seek-youtube-all-text");
+      let allText = '';
+      // let copyButton;
+      if (!allTextArea) {
+        allTextArea = document.createElement("div");
+        allTextArea.id = "seek-youtube-all-text";
+        allTextArea.style.height = "30px";
+        allTextArea.style.overflow = "hidden";
+        allTextArea.style.overflowY = "auto";
+      }
+      divWrap = document.getElementById("seek-youtube_wrap");
+      // console.log("divWrap1", divWrap);
+      if (!divWrap) {
+        divWrap = document.createElement("div");
+      }
+      let t;
+      let subtitlesText = '';//'<p>';
+      data.forEach((el) => {
+        subtitlesText += " "
+        const { segs = [], tStartMs, dDurationMs } = el;
+        // t = (tStartMs / 1000)
+        // d = (dDurationMs / 1000)
+        const timeString = `<${tStartMs} - ${dDurationMs}>`;
+        t = tStartMs;
+        allText += timeString;
+        segs.map((k) => {
+          wordsCount++;
+          allText += k.utf8.toString();
+          // if (wordsCount % 200 == 0) {
+          //   subtitlesText += "</p><p>";
+          // }
+          subtitlesText += k.utf8.toString();
+          // return k.utf8
+        })
+        lineTimes.push({ index: lineTimes.length, value: t });// tStartMs / 1000 });
+      });
+      // subtitlesText += '</p>'
+      allTextArea.innerHTML = allText;
+      divWrap.innerHTML = subtitlesText;
 
-    // const ul = document.createElement("ul");
+      divWrap.id = "seek-youtube_wrap";
+      divWrap.style.height = '50px';
+      divWrap.style.zIndex = 999;
+      divWrap.style.background = "white";
+      divWrap.style.top = "80px";
+      divWrap.style.right = "0";
+      divWrap.style.fontSize = "14px";
+      divWrap.style.padding = "24px 24px";
+      divWrap.style.marginRight = "24px";
+      divWrap.style.overflow = "auto";
+      divWrap.style.border = "1px solid";
+      divWrap.style.transition = "transform 1s";
+      divWrap.setAttribute('total-time', t)
+      divWrap.setAttribute('total-lines', lineTimes.length)
+      divWrap.setAttribute('language', subUrl.languageCode)
 
-    data.forEach((el) => {
-      const { segs = [], tStartMs } = el;
-      const t = (tStartMs / 1000) //millisToMinutesAndSeconds(tStartMs);
-      const timeString = `-${t.toFixed(2)}-`;
-
-      allText += '||||'; //timeString;
-      // subtitlesText += '||||';
-
-      segs.map((k) => {
-        allText += k.utf8.toString();
-        subtitlesText += k.utf8.toString();
-        // return k.utf8
+      let divSecondary = document.getElementById("secondary");
+      divSecondary.prepend(divWrap);
+      const input = document.createElement("input");
+      input.type = 'button';
+      input.addEventListener('click', () => {
+        let text = allTextArea.textContent;
+        // copy to clipboard
+        navigator.clipboard.writeText(text);
       })
-      lineTimes.push({ index: lineTimes.length, value: t });// tStartMs / 1000 });
-    });
+      divSecondary.prepend(input);
+      divSecondary.prepend(allTextArea);
 
-    divWrap.innerHTML = allText;
 
-    divWrap.id = "seek-youtube_wrap";
-    divWrap.style.height = video.style.height;
-    divWrap.style.zIndex = 999;
-    divWrap.style.background = "white";
-    divWrap.style.top = "80px";
-    divWrap.style.right = "0";
-    divWrap.style.fontSize = "14px";
-    divWrap.style.padding = "24px 24px";
-    divWrap.style.marginRight = "24px";
-    divWrap.style.overflow = "auto";
-    divWrap.style.border = "1px solid";
-    divWrap.style.transition = "transform 1s";
-
-    let divSecondary = document.getElementById("secondary");
-    divSecondary.prepend(divWrap);
-    // allTextArea.textContent = subtitlesText;
-    // divSecondary.prepend(allTextArea);
-
-    // start auto jum sub
-    // turnOnAutoSub();
-
-    divWrap.addEventListener("mouseover", function (ev) {
+      // start auto jum sub
       turnOnAutoSub();
-    });
 
-    divWrap.addEventListener("mouseleave", function (ev) {
-      turnOffAutoSub()
-    });
+      // divWrap.addEventListener("mouseover", function (ev) {
+      //   turnOnAutoSub();
+      // });
 
-    video.addEventListener("ended", function (e) {
-      turnOffAutoSub();
-    });
-  };
+      // divWrap.addEventListener("mouseleave", function (ev) {
+      //   turnOffAutoSub()
+      // });
 
-  (async () => {
-    try {
-      const resData = await fetch(subUrl?.baseUrl + "&fmt=json3").then((res) =>
-        res.json()
-      );
-      // console.log("resData", resData);
-      subtitleData = resData?.events.filter(
-        (k) =>
-          k?.segs &&
-          Boolean(
-            ` ${k?.segs
-              .map((k) => k.utf8)
-              .toString()
-              .replaceAll(", ", " ")}`.trim()
-          )
-      );
-      subtitleDataTime = resData?.events.map((k) => k.tStartMs / 1000);
-    } catch (error) {
-      console.log(error);
-    }
+      video.addEventListener("ended", function (e) {
+        turnOffAutoSub();
+      });
+    };
 
-    if (subtitleData) {
-      console.log("runnnn");
+    (async () => {
+      try {
+        const resData = await fetch(subUrl?.baseUrl + "&fmt=json3").then((res) =>
+          res.json()
+        );
+        // console.log("resData", resData);
+        subtitleData = resData?.events.filter(
+          (k) =>
+            k?.segs &&
+            Boolean(
+              ` ${k?.segs
+                .map((k) => k.utf8)
+                .toString()
+                .replaceAll(", ", " ")}`.trim()
+            )
+        );
+        subtitleDataTime = resData?.events.map((k) => k.tStartMs / 1000);
+      } catch (error) {
+        console.log(error);
+      }
 
-      await retry(
-        () => { },
-        2000,
-        50,
-        () => {
-          return document.getElementById("secondary");
-        }
-      );
-      makeList(subtitleData);
-    }
-  })();
+      if (subtitleData) {
+        console.log("runnnn");
+
+        await retry(
+          () => { },
+          2000,
+          50,
+          () => {
+            return document.getElementById("secondary");
+          }
+        );
+        makeList(subtitleData);
+      }
+
+    })();
+  }
 }
